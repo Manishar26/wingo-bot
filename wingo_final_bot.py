@@ -1,25 +1,18 @@
 import requests
 import time
-import os
-from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
+from flask import Flask
 
-BOT_TOKEN = "AAERkhSNXSoHvcn5fNu0NYLtka1YmFZ-_eM" 
-CHAT_ID = "8818440313"
+# Render App தூங்காமல் இருக்க ஒரு dummy Flask server
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "WinGo Bot is Running!"
+
+BOT_TOKEN = "8026538280:AAHOo3pCnTDB_Oy9DuNPYjb09Kqm2UfM7Os" 
+CHAT_ID = "1181622773"
 API_URL = "https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json?pageNo=1&pageSize=10&gameId=1"
-
-class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot Active")
-
-def run_web_server():
-    port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
-    server.serve_forever()
-
-threading.Thread(target=run_web_server, daemon=True).start()
 
 PATTERN_TARGETS = {
     "BBBSS": ("B", "BET ON BIG 🟡"),
@@ -34,14 +27,14 @@ def send_telegram(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     try:
         res = requests.post(url, json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}, timeout=5)
-        print("Telegram API Response:", res.status_code, res.text)
+        print("Telegram Status:", res.status_code)
     except Exception as e:
-        print(f"Telegram Exception: {e}")
+        print(f"Telegram Error: {e}")
 
 def get_outcome(num):
     num = int(num)
     size = "B" if num >= 5 else "S"
-    color = "G" if num in [1, 3, 7, 9, 5] else ("R" if num in [2, 4, 6, 8, 0] else "MIX")
+    color = "G" if num in [1, 3, 5, 7, 9] else "R"
     return size, color
 
 def check_market():
@@ -74,9 +67,10 @@ def check_market():
         if latest_period == state["last_period"]: return
         state["last_period"] = latest_period
 
-        last_5 = list_data[:5][::-1]
+        last_5 = list_data[1:6][::-1]
         size_pat = "".join([get_outcome(d["number"])[0] for d in last_5])
         color_pat = "".join([get_outcome(d["number"])[1] for d in last_5])
+        
         target_period = str(int(latest_period) + 1)
 
         matched, p_type = None, None
@@ -89,13 +83,22 @@ def check_market():
             send_telegram(f"🚀 *WINGO PATTERN ALERT*\nPattern: `{matched}` ({p_type})\nTarget: `{target_period[-5:]}`\nSignal: *{alert_txt}*\nLevel: `Level {state['current_level']}`")
 
     except Exception as e:
-        print(f"Error in check_market: {e}")
+        print(f"Error: {e}")
 
-# Forced Startup Notification
-time.sleep(1)
-send_telegram("🔔 *WinGo Bot Started & Listening to Market...*")
+def bot_loop():
+    send_telegram("🚀 *WinGo Bot Active 24/7 Free Cloud!*")
+    while True:
+        check_market()
+        time.sleep(3)
 
-while True:
-    check_market()
-    time.sleep(3)
-        
+if __name__ == "__main__":
+    # Bot Loop-ஐ பின்னணியில் தனியாக ஓட வைக்கிறது
+    t = threading.Thread(target=bot_loop)
+    t.daemon = True
+    t.start()
+    
+    # Render-ன் இலவச Web Service-க்கான Port
+    import os
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+    
