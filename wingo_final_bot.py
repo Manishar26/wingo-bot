@@ -1,5 +1,8 @@
 import requests
 import time
+import os
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 
 # Telegram Configuration
 BOT_TOKEN = "AAERkhSNXSoHvcn5fNu0NYLtka1YmFZ-_eM" 
@@ -8,23 +11,34 @@ CHAT_ID = "8818440313"
 # WinGo 30S API
 API_URL = "https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json?pageNo=1&pageSize=10&gameId=1"
 
+# Fake Web Server to pass Render Port Check
+class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is Running Alive!")
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
+    server.serve_forever()
+
+# Start Web Server in Background
+threading.Thread(target=run_web_server, daemon=True).start()
+
 # ONLY YOUR EXACT 4 PATTERNS (Oldest -> Newest)
 PATTERN_TARGETS = {
-    # Size Patterns
     "BBBSS": ("B", "BET ON BIG 🟡"),
     "SSSBB": ("S", "BET ON SMALL 🔵"),
-    
-    # Color Patterns
     "GGGRR": ("G", "BET ON GREEN 🟢"),
     "RRRGG": ("R", "BET ON RED 🔴")
 }
 
-# State Variables
 state = {
     "last_notified_period": "",
     "pending_period": None,
     "pending_bet": None,
-    "pending_type": None,  # "SIZE" or "COLOR"
+    "pending_type": None,
     "win_count": 0,
     "loss_count": 0,
     "current_level": 1
@@ -41,15 +55,7 @@ def send_telegram(msg):
 def get_outcome(num):
     num = int(num)
     size = "B" if num >= 5 else "S"
-    
-    # Standard WinGo Colour Logic
-    if num in [1, 3, 7, 9, 5]:
-        color = "G"
-    elif num in [2, 4, 6, 8, 0]:
-        color = "R"
-    else:
-        color = "MIX"
-        
+    color = "G" if num in [1, 3, 7, 9, 5] else ("R" if num in [2, 4, 6, 8, 0] else "MIX")
     return size, color
 
 def check_market():
@@ -66,7 +72,6 @@ def check_market():
         latest_num = int(latest["number"])
         actual_size, actual_color = get_outcome(latest_num)
 
-        # 1. Check Result for Pending Prediction
         if state["pending_period"] and latest_period == state["pending_period"]:
             predicted = state["pending_bet"]
             is_win = False
@@ -98,21 +103,16 @@ def check_market():
             state["pending_bet"] = None
             state["pending_type"] = None
 
-        # Avoid repeat checks for same period
         if latest_period == state["last_notified_period"]:
             return
             
         state["last_notified_period"] = latest_period
-
-        # 2. Extract Last 5 Rounds (Oldest -> Newest)
         last_5 = list_data[:5][::-1]
         
         size_pattern = "".join([get_outcome(d["number"])[0] for d in last_5])
         color_pattern = "".join([get_outcome(d["number"])[1] for d in last_5])
-
         target_period = str(int(latest_period) + 1)
 
-        # Match Pattern
         matched_pattern = None
         p_type = None
 
@@ -125,8 +125,6 @@ def check_market():
 
         if matched_pattern:
             next_bet_code, alert_text = PATTERN_TARGETS[matched_pattern]
-            
-            # Store for pending result check
             state["pending_period"] = target_period
             state["pending_bet"] = next_bet_code
             state["pending_type"] = p_type
@@ -151,4 +149,4 @@ send_telegram("✅ *WinGo Exact 4-Pattern Bot Active! Tracking BBBSS, SSSBB, GGG
 while True:
     check_market()
     time.sleep(3)
-              
+            
