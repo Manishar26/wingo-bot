@@ -67,9 +67,11 @@ def check_market():
         if latest_period == state["last_period"]: return
         state["last_period"] = latest_period
 
-        last_5 = list_data[1:6][::-1]
+                # API-ல் முதல் 5 எண்களை (Oldest -> Newest) எடுக்கிறோம்
+        last_5 = list_data[:5][::-1]
         size_pat = "".join([get_outcome(d["number"])[0] for d in last_5])
         color_pat = "".join([get_outcome(d["number"])[1] for d in last_5])
+        
         
         target_period = str(int(latest_period) + 1)
 
