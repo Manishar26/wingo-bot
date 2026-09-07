@@ -1,14 +1,14 @@
 import requests
 import time
 import threading
+import os
 from flask import Flask
 
-# Render App தூங்காமல் இருக்க ஒரு dummy Flask server
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "WinGo Bot is Running!"
+    return "WinGo Bot is Running Live 24/7!"
 
 BOT_TOKEN = "8026538280:AAHOo3pCnTDB_Oy9DuNPYjb09Kqm2UfM7Os" 
 CHAT_ID = "1181622773"
@@ -27,7 +27,7 @@ def send_telegram(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     try:
         res = requests.post(url, json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}, timeout=5)
-        print("Telegram Status:", res.status_code)
+        print("Telegram Log:", res.status_code)
     except Exception as e:
         print(f"Telegram Error: {e}")
 
@@ -46,9 +46,16 @@ def check_market():
 
         latest = list_data[0]
         latest_period = str(latest["issueNumber"])
+        
+        # புதிய Period வந்தால் மட்டுமே இயங்கும்
+        if latest_period == state["last_period"]: 
+            return
+            
+        state["last_period"] = latest_period
         latest_num = int(latest["number"])
         actual_size, actual_color = get_outcome(latest_num)
 
+        # 1. முந்தைய Bet Result சரிபார்த்தல்
         if state["pending"] and latest_period == state["pending"]["target"]:
             pred = state["pending"]
             win = (pred["type"] == "SIZE" and pred["bet"] == actual_size) or (pred["type"] == "COLOR" and pred["bet"] == actual_color)
@@ -64,20 +71,19 @@ def check_market():
             send_telegram(f"📊 *RESULT FOR {latest_period[-5:]}*\nResult: `{latest_num}` | Status: {status}\nWins: `{state['win_count']}` | Losses: `{state['loss_count']}`\nNext Level: `Level {state['current_level']}`")
             state["pending"] = None
 
-        if latest_period == state["last_period"]: return
-        state["last_period"] = latest_period
-
-                # API-ல் முதல் 5 எண்களை (Oldest -> Newest) எடுக்கிறோம்
+        # 2. புதிய Pattern சரிபார்த்தல் (கடைசி 5 முடிவுகள்)
         last_5 = list_data[:5][::-1]
         size_pat = "".join([get_outcome(d["number"])[0] for d in last_5])
         color_pat = "".join([get_outcome(d["number"])[1] for d in last_5])
         
-        
+        # String முறையில் அடுத்த Target Period கணக்கிடுதல்
         target_period = str(int(latest_period) + 1)
 
         matched, p_type = None, None
-        if size_pat in PATTERN_TARGETS: matched, p_type = size_pat, "SIZE"
-        elif color_pat in PATTERN_TARGETS: matched, p_type = color_pat, "COLOR"
+        if size_pat in PATTERN_TARGETS: 
+            matched, p_type = size_pat, "SIZE"
+        elif color_pat in PATTERN_TARGETS: 
+            matched, p_type = color_pat, "COLOR"
 
         if matched:
             next_code, alert_txt = PATTERN_TARGETS[matched]
@@ -88,19 +94,16 @@ def check_market():
         print(f"Error: {e}")
 
 def bot_loop():
-    send_telegram("🚀 *WinGo Bot Active 24/7 Free Cloud!*")
+    send_telegram("🚀 *WinGo Bot Core Logic Fixed & Running!*")
     while True:
         check_market()
         time.sleep(3)
 
 if __name__ == "__main__":
-    # Bot Loop-ஐ பின்னணியில் தனியாக ஓட வைக்கிறது
     t = threading.Thread(target=bot_loop)
     t.daemon = True
     t.start()
     
-    # Render-ன் இலவச Web Service-க்கான Port
-    import os
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
     
