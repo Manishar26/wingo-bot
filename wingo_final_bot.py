@@ -1,6 +1,7 @@
 import requests
 import time
 import threading
+import os
 from flask import Flask
 
 app = Flask(__name__)
@@ -9,19 +10,18 @@ BOT_TOKEN = "8026538280:AAHOo3pCnTDB_Oy9DuNPYjb09Kqm2UfM7Os"
 CHAT_ID = "1181622773"
 API_URL = "https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json?pageNo=1&pageSize=10&gameId=1"
 
-# API Blocking-ஐத் தவிர்க்க Browser Header
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"
 }
 
-PATTERNS = {
-    "BBBSS": {"bet": "B", "text": "BET ON BIG 🟡"},
-    "SSSBB": {"bet": "S", "text": "BET ON SMALL 🔵"},
-    "GGGRR": {"bet": "G", "text": "BET ON GREEN 🟢"},
-    "RRRGG": {"bet": "R", "text": "BET ON RED 🔴"}
+# Simple Pattern Mapping
+PATTERN_TARGETS = {
+    "BBBSS": ("B", "BET ON BIG 🟡"),
+    "SSSBB": ("S", "BET ON SMALL 🔵"),
+    "GGGRR": ("G", "BET ON GREEN 🟢"),
+    "RRRGG": ("R", "BET ON RED 🔴")
 }
 
-# Win/Loss Global State
 state = {
     "last_period": "",
     "wins": 0,
@@ -35,7 +35,7 @@ def send_telegram(msg):
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         requests.post(url, json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}, timeout=5)
     except Exception as e:
-        print("Telegram error:", e)
+        print("Telegram Error:", e)
 
 def get_outcome(num):
     num = int(num)
@@ -59,7 +59,7 @@ def check_market():
         latest_num = int(latest["number"])
         actual_size, actual_color = get_outcome(latest_num)
 
-        # 1. RESULT VERIFICATION (Win/Loss)
+        # 1. WIN / LOSS VERIFICATION
         if state["pending"] and period == state["pending"]["target"]:
             pred = state["pending"]
             is_win = (pred["type"] == "SIZE" and pred["bet"] == actual_size) or \
@@ -74,59 +74,60 @@ def check_market():
                 state["level"] += 1
                 status = "❌ *LOSS!*"
 
-            result_msg = (
+            send_telegram(
                 f"📊 *RESULT FOR {period[-5:]}*\n"
                 f"Result: `{latest_num}` | Status: {status}\n"
                 f"Wins: `{state['wins']}` | Losses: `{state['losses']}`\n"
                 f"Next Level: `Level {state['level']}`"
             )
-            send_telegram(result_msg)
             state["pending"] = None
 
-        # 2. PATTERN CHECKING
+        # 2. PATTERN CHECKING (Kadaisi 5 Results)
         last_5 = list_data[:5][::-1]
         size_pat = "".join([get_outcome(d["number"])[0] for d in last_5])
         color_pat = "".join([get_outcome(d["number"])[1] for d in last_5])
 
         matched, p_type = None, ""
-        if size_pat in PATTERNS:
+        if size_pat in PATTERN_TARGETS:
             matched, p_type = size_pat, "SIZE"
-        elif color_pat in PATTERNS:
+        elif color_pat in PATTERN_TARGETS:
             matched, p_type = color_pat, "COLOR"
 
         if matched:
-            pat_info = PATTERNS[matched]
+            next_code, alert_txt = PATTERN_TARGETS[matched]
             target_period = str(int(period) + 1)
 
             state["pending"] = {
                 "target": target_period,
-                "bet": pat_info["bet"],
+                "bet": next_code,
                 "type": p_type
             }
 
-            alert_msg = (
+            send_telegram(
                 f"🚀 *WINGO PATTERN ALERT*\n"
                 f"Pattern: `{matched}` ({p_type})\n"
                 f"Target: `{target_period[-5:]}`\n"
-                f"Signal: *{pat_info['text']}*\n"
+                f"Signal: *{alert_txt}*\n"
                 f"Level: `Level {state['level']}`"
             )
-            send_telegram(alert_msg)
 
     except Exception as e:
-        print("API Fetch Error:", e)
+        print("Market Check Error:", e)
 
 def bot_loop():
     time.sleep(2)
-    send_telegram("🚀 *WinGo Python Bot Active with Win/Loss Tracker!*")
+    send_telegram("🚀 *WinGo Bot Live Pattern Logic Updated!*")
     while True:
         check_market()
-        time.sleep(3)
+        time.sleep(2)  # Fast checking (Every 2 seconds)
 
-# Background Loop Start
 threading.Thread(target=bot_loop, daemon=True).start()
 
 @app.route('/')
 def home():
-    return f"WinGo Bot Live! Wins: {state['wins']} | Losses: {state['losses']} | Current Level: {state['level']}"
+    return f"WinGo Bot Active! Wins: {state['wins']} | Losses: {state['losses']}"
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
     
