@@ -11,10 +11,9 @@ CHAT_ID = "1181622773"
 API_URL = "https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json?pageNo=1&pageSize=10&gameId=1"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 
-# Simple Pattern Mapping
 PATTERN_TARGETS = {
     "BBBSS": ("B", "BET ON BIG 🟡"),
     "SSSBB": ("S", "BET ON SMALL 🔵"),
@@ -27,7 +26,9 @@ state = {
     "wins": 0,
     "losses": 0,
     "level": 1,
-    "pending": None
+    "pending": None,
+    "last_check": "Not Started Yet",
+    "error_log": "None"
 }
 
 def send_telegram(msg):
@@ -52,6 +53,7 @@ def check_market():
 
         latest = list_data[0]
         period = str(latest["issueNumber"])
+        state["last_check"] = f"Period: {period[-5:]} | Time: {time.strftime('%H:%M:%S')}"
 
         if period == state["last_period"]: return
         state["last_period"] = period
@@ -82,7 +84,7 @@ def check_market():
             )
             state["pending"] = None
 
-        # 2. PATTERN CHECKING (Kadaisi 5 Results)
+        # 2. PATTERN CHECKING
         last_5 = list_data[:5][::-1]
         size_pat = "".join([get_outcome(d["number"])[0] for d in last_5])
         color_pat = "".join([get_outcome(d["number"])[1] for d in last_5])
@@ -112,20 +114,27 @@ def check_market():
             )
 
     except Exception as e:
+        state["error_log"] = str(e)
         print("Market Check Error:", e)
 
 def bot_loop():
-    time.sleep(2)
-    send_telegram("🚀 *WinGo Bot Live Pattern Logic Updated!*")
+    time.sleep(3)
+    send_telegram("🚀 *WinGo Bot Started via Render + UptimeRobot!*")
     while True:
         check_market()
-        time.sleep(2)  # Fast checking (Every 2 seconds)
+        time.sleep(3)
 
+# Background Thread
 threading.Thread(target=bot_loop, daemon=True).start()
 
 @app.route('/')
 def home():
-    return f"WinGo Bot Active! Wins: {state['wins']} | Losses: {state['losses']}"
+    return f"""
+    <h2>🚀 WinGo 30S Bot Status</h2>
+    <p><b>Last API Check:</b> {state['last_check']}</p>
+    <p><b>Wins:</b> {state['wins']} | <b>Losses:</b> {state['losses']} | <b>Current Level:</b> {state['level']}</p>
+    <p><b>Error Status:</b> {state['error_log']}</p>
+    """
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
